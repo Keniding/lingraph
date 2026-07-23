@@ -86,13 +86,16 @@ crear uno nuevo. (También puedes importar vía `/docs` → `POST
 consume `/graph/nodes`, `/graph/edges` y `/graph/analysis/top-connectors`
 y dibuja el grafo con Cytoscape.js:
 
-- Nodos owner (`es_owner`) en verde, contactos en azul.
-- Botón "Top conectores" — dimensiona los nodos por betweenness (quiénes
-  hacen de puente entre tus círculos).
+- Diseño oscuro con panel de insights (nodos · aristas · owners) y hero
+  de bienvenida cuando el grafo está vacío.
+- Nodos owner (`es_owner`) en verde, contactos en cian.
+- Botón "Top conectores" — dimensiona los nodos por betweenness y lista
+  los 5 mayores puentes en el panel.
 - Click en un nodo resalta su vecindario.
 
-Cytoscape se carga por CDN; para uso offline, descarga el `.js` y sírvelo
-local. Es un MVP embebido en el backend — más adelante puede migrar a un
+Cytoscape.js va **vendorizado** (`backend/app/static/cytoscape.min.js`),
+así que la app es 100% self-contained: no depende de ningún CDN y funciona
+offline. Es un MVP embebido en el backend — más adelante puede migrar a un
 SPA separado sin cambiar la API.
 
 ## Config
