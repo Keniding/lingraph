@@ -32,6 +32,14 @@
     .legend { display: flex; gap: 14px; font-size: 12px; color: #9aa4b2; }
     .legend span { display: inline-flex; align-items: center; gap: 5px; }
     .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    input[type="text"] {
+      background: #0f1115; color: #e6e6e6; border: 1px solid #2b303b;
+      border-radius: 6px; padding: 6px 9px; font-size: 13px; width: 130px;
+    }
+    input[type="file"] { display: none; }
+    .import { display: flex; align-items: center; gap: 8px; }
+    .import .file-name { font-size: 12px; color: #9aa4b2; max-width: 160px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -42,9 +50,16 @@
       <span><i class="dot" style="background:#60a5fa"></i> contacto</span>
     </div>
     <div class="spacer"></div>
-    <button id="reload">Recargar</button>
+    <div class="import">
+      <input type="text" id="ownerName" placeholder="tu nombre" />
+      <input type="file" id="fileInput" accept=".csv" />
+      <button id="pick" class="secondary">Elegir CSV…</button>
+      <span class="file-name" id="fileName"></span>
+      <button id="import" disabled>Importar</button>
+    </div>
     <button id="connectors" class="secondary">Top conectores</button>
     <button id="fit" class="secondary">Ajustar vista</button>
+    <button id="reload" class="secondary">Recargar</button>
     <span id="status"></span>
   </header>
   <div id="cy"></div>
@@ -132,6 +147,58 @@
       }
     }
 
+    // --- Importar CSV desde el propio visor ---
+    // Guardamos el owner_person_id que devuelve el backend para que los
+    // siguientes imports (ej: subes otro CSV) sumen al mismo nodo owner
+    // en vez de crear uno nuevo cada vez.
+    const OWNER_ID_KEY = "lingraph_owner_id";
+    const OWNER_NAME_KEY = "lingraph_owner_name";
+
+    $("ownerName").value = localStorage.getItem(OWNER_NAME_KEY) || "";
+
+    $("pick").onclick = () => $("fileInput").click();
+    $("fileInput").onchange = () => {
+      const f = $("fileInput").files[0];
+      $("fileName").textContent = f ? f.name : "";
+      $("import").disabled = !f;
+    };
+
+    async function importCsv() {
+      const file = $("fileInput").files[0];
+      if (!file) return;
+      const name = $("ownerName").value.trim() || "Yo";
+      localStorage.setItem(OWNER_NAME_KEY, name);
+
+      const params = new URLSearchParams({ owner_name: name });
+      const savedOwner = localStorage.getItem(OWNER_ID_KEY);
+      if (savedOwner) params.set("owner_person_id", savedOwner);
+
+      const form = new FormData();
+      form.append("file", file);
+
+      $("import").disabled = true;
+      setStatus("importando…");
+      try {
+        const r = await fetch("/imports/linkedin-csv?" + params.toString(), {
+          method: "POST", body: form,
+        });
+        const body = await r.json();
+        if (!r.ok) throw new Error(body.detail || r.status);
+        localStorage.setItem(OWNER_ID_KEY, body.owner_person_id);
+        setStatus(
+          `importado: +${body.personas_creadas} nuevos, ` +
+          `${body.personas_ya_existentes} ya existían, ` +
+          `${body.aristas_creadas} aristas`
+        );
+        await loadGraph();
+      } catch (err) {
+        setStatus("error al importar: " + err.message);
+      } finally {
+        $("import").disabled = !$("fileInput").files[0];
+      }
+    }
+
+    $("import").onclick = importCsv;
     $("reload").onclick = loadGraph;
     $("connectors").onclick = loadTopConnectors;
     $("fit").onclick = () => cy.fit(undefined, 40);

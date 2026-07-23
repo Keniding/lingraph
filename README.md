@@ -62,13 +62,18 @@ Tres URLs:
 - http://127.0.0.1:8000/docs — API interactiva (subir el CSV con botones).
 - http://127.0.0.1:8000/health — chequeo rápido de que está vivo.
 
-## Probarlo en 3 clics (sin OAuth, sin curl)
+## Probarlo (sin OAuth, sin curl, todo en el visor)
 
-1. Abre http://127.0.0.1:8000/docs
-2. `POST /imports/linkedin-csv` → **Try it out** → elige tu `Connections.csv`
-   en el campo `file` (deja `owner_person_id` vacío; pon tu nombre en
-   `owner_name`) → **Execute**. Crea tu nodo owner y mergea tus contactos.
-3. Abre http://127.0.0.1:8000/ui → ahí está tu grafo.
+1. Abre http://127.0.0.1:8000/ui
+2. Arriba: escribe tu nombre, **Elegir CSV…**, selecciona tu
+   `Connections.csv`, y **Importar**. El grafo se dibuja solo.
+3. Botón *Top conectores* dimensiona los nodos puente; click en un nodo
+   aísla su vecindario.
+
+El visor recuerda tu `owner_person_id` (localStorage), así que si subes
+otro CSV después, los contactos se suman al mismo nodo owner en vez de
+crear uno nuevo. (También puedes importar vía `/docs` → `POST
+/imports/linkedin-csv` si prefieres.)
 
 > Si cambias el modelo de datos durante el desarrollo (agregar/quitar
 > campos), borra `backend/lingraph.db` y reinicia: SQLite no migra tablas
