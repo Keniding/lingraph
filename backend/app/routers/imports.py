@@ -14,7 +14,7 @@ router = APIRouter(prefix="/imports", tags=["imports"])
 @router.post("/linkedin-csv")
 async def import_linkedin_csv(
     file: UploadFile,
-    owner_person_id: Optional[UUID] = None,
+    owner_person_id: Optional[str] = None,
     owner_name: str = "Yo",
     session: Session = Depends(get_session),
 ):
@@ -26,13 +26,27 @@ async def import_linkedin_csv(
     - Si no pasas owner_person_id, se crea un owner nuevo con `owner_name`
       (útil para probar en local sin OAuth). El id creado sale en la
       respuesta para que lo reutilices en el próximo import.
+
+    Se recibe como texto (no UUID estricto) para tolerar valores vacíos o
+    "undefined" que un cliente web puede mandar: se tratan como "sin owner".
     """
-    if owner_person_id is not None:
-        owner = session.get(Person, owner_person_id)
+    owner_id = (owner_person_id or "").strip()
+    if owner_id.lower() in ("", "undefined", "null", "none"):
+        owner_id = None
+
+    if owner_id is not None:
+        try:
+            owner_uuid = UUID(owner_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"owner_person_id no es un UUID válido: {owner_id!r}.",
+            )
+        owner = session.get(Person, owner_uuid)
         if owner is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"No existe un Person con id {owner_person_id}.",
+                detail=f"No existe un Person con id {owner_id}.",
             )
     else:
         owner = Person(nombre=owner_name, es_owner=True, fuentes=["manual"])

@@ -163,27 +163,51 @@
       $("import").disabled = !f;
     };
 
-    async function importCsv() {
-      const file = $("fileInput").files[0];
-      if (!file) return;
-      const name = $("ownerName").value.trim() || "Yo";
-      localStorage.setItem(OWNER_NAME_KEY, name);
+    // Convierte el `detail` de FastAPI (string o lista de errores de
+    // validación) en un mensaje legible, en vez de "[object Object]".
+    function formatDetail(body, status) {
+      const d = body && body.detail;
+      if (typeof d === "string") return d;
+      if (Array.isArray(d)) {
+        return d.map((e) => `${(e.loc || []).join(".")}: ${e.msg}`).join("; ");
+      }
+      return "HTTP " + status;
+    }
 
+    async function postImport(file, name, ownerId) {
       const params = new URLSearchParams({ owner_name: name });
-      const savedOwner = localStorage.getItem(OWNER_ID_KEY);
-      if (savedOwner) params.set("owner_person_id", savedOwner);
-
+      if (ownerId) params.set("owner_person_id", ownerId);
       const form = new FormData();
       form.append("file", file);
+      const r = await fetch("/imports/linkedin-csv?" + params.toString(), {
+        method: "POST", body: form,
+      });
+      let body = {};
+      try { body = await r.json(); } catch (_) {}
+      return { r, body };
+    }
+
+    async function importCsv() {
+      const file = $("fileInput").files[0];
+      if (!file) { setStatus("elige un archivo CSV primero"); return; }
+      const name = $("ownerName").value.trim() || "Yo";
+      localStorage.setItem(OWNER_NAME_KEY, name);
 
       $("import").disabled = true;
       setStatus("importando…");
       try {
-        const r = await fetch("/imports/linkedin-csv?" + params.toString(), {
-          method: "POST", body: form,
-        });
-        const body = await r.json();
-        if (!r.ok) throw new Error(body.detail || r.status);
+        let ownerId = localStorage.getItem(OWNER_ID_KEY) || "";
+        let { r, body } = await postImport(file, name, ownerId);
+
+        // owner guardado que ya no existe (ej: borraste lingraph.db):
+        // limpiamos y reintentamos creando uno nuevo.
+        if (r.status === 404 && ownerId) {
+          localStorage.removeItem(OWNER_ID_KEY);
+          ({ r, body } = await postImport(file, name, ""));
+        }
+
+        if (!r.ok) throw new Error(formatDetail(body, r.status));
+
         localStorage.setItem(OWNER_ID_KEY, body.owner_person_id);
         setStatus(
           `importado: +${body.personas_creadas} nuevos, ` +

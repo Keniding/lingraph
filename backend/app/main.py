@@ -4,12 +4,26 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.responses import Response
 
 from app.config import get_settings
 from app.db import init_db
 from app.routers import auth, graph, imports
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+class NoCacheStaticFiles(StaticFiles):
+    """Sirve el frontend sin caché para que un cambio en index.html se vea
+    al recargar, sin que el navegador quede pegado a una versión vieja."""
+
+    def is_not_modified(self, *args, **kwargs) -> bool:
+        return False
+
+    async def get_response(self, path: str, scope) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+        return response
 
 
 @asynccontextmanager
@@ -37,4 +51,4 @@ def health():
 # Frontend estático (Cytoscape.js). Visualiza el grafo en /ui. Consume la
 # misma API (/graph/nodes, /graph/edges, /graph/analysis/*), así que no
 # necesita CORS al servirse desde el mismo origen.
-app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
+app.mount("/ui", NoCacheStaticFiles(directory=STATIC_DIR, html=True), name="ui")
