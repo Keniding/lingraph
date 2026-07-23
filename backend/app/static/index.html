@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>lingraph · tu red como un grafo vivo</title>
-  <!-- Cytoscape.js servido local (backend/app/static/cytoscape.min.js).
-       La app es 100% self-contained: no depende de ningún CDN. -->
-  <script src="cytoscape.min.js"></script>
+  <!-- force-graph (vasturiano) servido local. App 100% self-contained,
+       sin CDN. Canvas/WebGL: glow, partículas animadas y labels en hover. -->
+  <script src="force-graph.min.js"></script>
   <style>
     :root {
       --bg: #07070b;
@@ -29,7 +29,6 @@
       overflow: hidden;
     }
 
-    /* Fondo con glows de color, estilo landing moderno */
     .bg-glow {
       position: fixed; inset: 0; z-index: 0; pointer-events: none;
       background:
@@ -40,12 +39,11 @@
 
     #cy { position: fixed; inset: 0; z-index: 1; }
 
-    /* --- Topbar glass --- */
     .topbar {
       position: fixed; z-index: 3; top: 0; left: 0; right: 0;
       display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
       padding: 12px 18px;
-      background: linear-gradient(180deg, rgba(7,7,11,0.85), rgba(7,7,11,0.35));
+      background: linear-gradient(180deg, rgba(7,7,11,0.85), rgba(7,7,11,0.30));
       backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
     }
@@ -96,7 +94,6 @@
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
 
-    /* --- Panel de insights --- */
     .panel {
       position: fixed; z-index: 2; left: 18px; top: 84px; width: 260px;
       background: var(--panel); backdrop-filter: blur(14px);
@@ -117,11 +114,13 @@
     .dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
     .dot.owner { background: var(--emerald); box-shadow: 0 0 10px rgba(52,211,153,0.7); }
     .dot.contact { background: var(--cyan); }
+    .hint-hover { margin-top: 10px; font-size: 11.5px; color: #5f6b7e; }
 
     .connectors { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 13px; }
     .panel-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); margin-bottom: 9px; }
     .connectors ol { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
-    .connectors li { display: flex; align-items: center; gap: 9px; font-size: 13px; }
+    .connectors li { display: flex; align-items: center; gap: 9px; font-size: 13px; cursor: pointer; }
+    .connectors li:hover .cname { color: var(--emerald); }
     .rank {
       width: 20px; height: 20px; border-radius: 6px; flex: none; display: grid; place-items: center;
       font-size: 11px; font-weight: 700; color: #04231b; background: var(--grad);
@@ -129,7 +128,6 @@
     .cname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cscore { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
-    /* --- Toast de estado --- */
     .toast {
       position: fixed; z-index: 3; bottom: 20px; left: 50%; transform: translateX(-50%);
       background: var(--panel); backdrop-filter: blur(14px);
@@ -140,7 +138,6 @@
     }
     .toast.show { opacity: 1; }
 
-    /* --- Empty state / hero --- */
     .empty {
       position: fixed; z-index: 2; inset: 0; display: grid; place-content: center;
       text-align: center; padding: 24px; gap: 6px; pointer-events: none;
@@ -195,6 +192,7 @@
       <span><i class="dot owner"></i> owner (subió su CSV)</span>
       <span><i class="dot contact"></i> contacto</span>
     </div>
+    <div class="hint-hover">Pasa el mouse sobre un nodo para ver el nombre y su red.</div>
     <div class="connectors" id="connectorsBox" hidden>
       <div class="panel-title">Top conectores · puentes</div>
       <ol id="connectorsItems"></ol>
@@ -205,8 +203,9 @@
 
   <div class="empty" id="empty">
     <h1>Tu red, <span class="grad">como un grafo vivo</span></h1>
-    <p>Sube tu <code>Connections.csv</code> de LinkedIn y descubre quién conecta
-       tus círculos. Cada persona que sube el suyo teje el mapa colectivo.</p>
+    <p>Sube tu <code>Connections.csv</code> de LinkedIn y descubre quién
+       conecta tus círculos. Cada persona que sube el suyo teje el mapa
+       colectivo.</p>
     <button class="btn primary lg" id="emptyCta">Elegir CSV para empezar</button>
     <div class="hint">sin registro · tus datos quedan en tu máquina</div>
   </div>
@@ -223,50 +222,105 @@
       toastTimer = setTimeout(() => el.classList.remove("show"), 4000);
     };
 
-    const cy = cytoscape({
-      container: $("cy"),
-      wheelSensitivity: 0.2,
-      style: [
-        { selector: "node", style: {
-            "background-color": "#22d3ee",
-            "label": "data(label)",
-            "color": "#e8ecf3",
-            "font-size": 11,
-            "font-weight": 600,
-            "text-valign": "bottom",
-            "text-margin-y": 6,
-            "text-outline-color": "#07070b",
-            "text-outline-width": 2.4,
-            "border-width": 2,
-            "border-color": "rgba(255,255,255,0.14)",
-            "width": "mapData(score, 0, 1, 22, 66)",
-            "height": "mapData(score, 0, 1, 22, 66)",
-            "transition-property": "width height background-color border-color",
-            "transition-duration": "0.25s",
-        }},
-        { selector: "node[?owner]", style: {
-            "background-color": "#34d399",
-            "border-color": "rgba(52,211,153,0.55)",
-            "border-width": 3,
-        }},
-        { selector: "edge", style: {
-            "width": 1.3,
-            "line-color": "rgba(148,163,184,0.28)",
-            "target-arrow-color": "rgba(148,163,184,0.4)",
-            "target-arrow-shape": "triangle",
-            "arrow-scale": 0.85,
-            "curve-style": "bezier",
-        }},
-        { selector: "node:selected", style: {
-            "border-color": "#a7f3d0", "border-width": 3,
-            "underlay-color": "#34d399", "underlay-opacity": 0.25, "underlay-padding": 10,
-        }},
-        { selector: ".dim", style: { "opacity": 0.12 } },
-        { selector: "edge.hot", style: {
-            "line-color": "rgba(52,211,153,0.7)", "target-arrow-color": "rgba(52,211,153,0.7)", "width": 2,
-        }},
-      ],
+    const EMERALD = "#34d399", CYAN = "#22d3ee";
+    const nodeColor = (n) => (n.owner ? EMERALD : CYAN);
+    const nodeRadius = (n) => 2 + Math.sqrt(Math.max(1, n.val || 1)) * 1.7;
+
+    // Estado de hover: nodo activo + sus vecinos y aristas resaltados.
+    let hoverNode = null;
+    const hiNodes = new Set();
+    const hiLinks = new Set();
+
+    const el = $("cy");
+    const Graph = ForceGraph()(el)
+      .backgroundColor("rgba(0,0,0,0)")
+      .width(window.innerWidth)
+      .height(window.innerHeight)
+      .nodeId("id")
+      .nodeVal((n) => n.val || 1)
+      .nodeRelSize(5)
+      .linkColor((l) => (hiLinks.has(l) ? "rgba(52,211,153,0.85)" : "rgba(148,163,184,0.16)"))
+      .linkWidth((l) => (hiLinks.has(l) ? 2 : 1))
+      .linkDirectionalParticles((l) => (hiLinks.has(l) ? 4 : 2))
+      .linkDirectionalParticleWidth((l) => (hiLinks.has(l) ? 2.6 : 1.5))
+      .linkDirectionalParticleSpeed(0.006)
+      .linkDirectionalParticleColor((l) => (hiLinks.has(l) ? "rgba(52,211,153,0.9)" : "rgba(120,200,220,0.35)"))
+      .cooldownTicks(120)
+      .onNodeHover((node) => {
+        hiNodes.clear();
+        hiLinks.clear();
+        if (node) {
+          hiNodes.add(node);
+          (node.__neighbors || []).forEach((n) => hiNodes.add(n));
+          (node.__links || []).forEach((l) => hiLinks.add(l));
+        }
+        hoverNode = node || null;
+        el.style.cursor = node ? "pointer" : "";
+      })
+      .nodeCanvasObject((node, ctx, globalScale) => {
+        const r = nodeRadius(node);
+        const dim = hoverNode && !hiNodes.has(node);
+        const hot = hiNodes.has(node);
+
+        // Nodo con glow.
+        ctx.save();
+        ctx.globalAlpha = dim ? 0.2 : 1;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+        ctx.fillStyle = nodeColor(node);
+        ctx.shadowColor = nodeColor(node);
+        ctx.shadowBlur = hot ? 24 : (node.owner ? 16 : 8);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        // Borde.
+        ctx.lineWidth = node.owner ? 1.6 : 1;
+        ctx.strokeStyle = hot ? "#eafff6" : "rgba(255,255,255,0.35)";
+        ctx.stroke();
+        ctx.restore();
+
+        // Nombre oculto por defecto: solo se dibuja para el nodo que está
+        // justo bajo el mouse (los vecinos se resaltan, sin saturar de
+        // texto). Tamaño fijo en pantalla (independiente del zoom).
+        if (node === hoverNode) {
+          const label = node.name;
+          const fs = 13 / globalScale;
+          ctx.font = `600 ${fs}px system-ui, sans-serif`;
+          const w = ctx.measureText(label).width;
+          const padX = 5 / globalScale, padY = 3 / globalScale;
+          const y = node.y + r + 4 / globalScale;
+          ctx.fillStyle = "rgba(7,7,11,0.82)";
+          ctx.beginPath();
+          const bx = node.x - w / 2 - padX, by = y, bw = w + padX * 2, bh = fs + padY * 2;
+          const rad = 3 / globalScale;
+          ctx.moveTo(bx + rad, by);
+          ctx.arcTo(bx + bw, by, bx + bw, by + bh, rad);
+          ctx.arcTo(bx + bw, by + bh, bx, by + bh, rad);
+          ctx.arcTo(bx, by + bh, bx, by, rad);
+          ctx.arcTo(bx, by, bx + bw, by, rad);
+          ctx.fill();
+          ctx.fillStyle = node === hoverNode ? "#eafff6" : "#cfe9f5";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "top";
+          ctx.fillText(label, node.x, y + padY);
+        }
+      })
+      .nodePointerAreaPaint((node, color, ctx) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, nodeRadius(node) + 2, 0, 2 * Math.PI);
+        ctx.fill();
+      });
+
+    // Más separación entre nodos para que el grafo respire.
+    Graph.d3Force("charge").strength(-240);
+    Graph.d3Force("link").distance(58);
+
+    window.addEventListener("resize", () => {
+      Graph.width(window.innerWidth).height(window.innerHeight);
     });
+
+    // Expuesto para depuración desde la consola del navegador.
+    window.lingraphGraph = Graph;
 
     async function fetchJSON(url) {
       const r = await fetch(url);
@@ -276,11 +330,24 @@
 
     let nodesById = {};
 
-    function updateStats(nodes, edges) {
-      $("stNodes").textContent = nodes.length;
-      $("stEdges").textContent = edges.length;
-      $("stOwners").textContent = nodes.filter((n) => n.es_owner).length;
-      $("empty").classList.toggle("hidden", nodes.length > 0);
+    function buildNeighbors(data) {
+      const byId = Object.fromEntries(data.nodes.map((n) => [n.id, n]));
+      data.nodes.forEach((n) => { n.__neighbors = []; n.__links = []; });
+      data.links.forEach((l) => {
+        const s = typeof l.source === "object" ? l.source : byId[l.source];
+        const t = typeof l.target === "object" ? l.target : byId[l.target];
+        if (s && t) {
+          s.__neighbors.push(t); t.__neighbors.push(s);
+          s.__links.push(l); t.__links.push(l);
+        }
+      });
+    }
+
+    function updateStats(nNodes, nEdges, nOwners) {
+      $("stNodes").textContent = nNodes;
+      $("stEdges").textContent = nEdges;
+      $("stOwners").textContent = nOwners;
+      $("empty").classList.toggle("hidden", nNodes > 0);
     }
 
     async function loadGraph() {
@@ -291,37 +358,21 @@
           fetchJSON("/graph/edges"),
         ]);
         nodesById = Object.fromEntries(nodes.map((n) => [n.id, n]));
-        const els = [
-          ...nodes.map((n) => ({ data: {
+        const data = {
+          nodes: nodes.map((n) => ({
             id: n.id,
-            label: n.nombre || "(sin nombre)",
+            name: n.nombre || "(sin nombre)",
             owner: !!n.es_owner,
-            score: 0,
-          }})),
-          ...edges.map((e) => ({ data: {
-            id: e.id,
-            source: e.origen_id,
-            target: e.destino_id,
-            tipo: e.tipo,
-          }})),
-        ];
-        cy.elements().remove();
-        cy.add(els);
-        cy.layout({
-          name: "cose",
-          animate: false,
-          padding: 60,
-          nodeRepulsion: 14000,
-          idealEdgeLength: 130,
-          nodeOverlap: 28,
-          gravity: 0.22,
-          componentSpacing: 140,
-          numIter: 1500,
-          coolingFactor: 0.95,
-        }).run();
-        cy.fit(undefined, 60);
+            val: n.es_owner ? 6 : 2,
+          })),
+          links: edges.map((e) => ({ source: e.origen_id, target: e.destino_id })),
+        };
+        hoverNode = null; hiNodes.clear(); hiLinks.clear();
+        Graph.graphData(data);
+        buildNeighbors(data);
         $("connectorsBox").hidden = true;
-        updateStats(nodes, edges);
+        updateStats(nodes.length, edges.length, nodes.filter((n) => n.es_owner).length);
+        setTimeout(() => Graph.zoomToFit(500, 70), 400);
         if (nodes.length) setStatus(`${nodes.length} nodos · ${edges.length} aristas`);
       } catch (err) {
         setStatus("error: " + err.message);
@@ -329,26 +380,31 @@
     }
 
     async function loadTopConnectors() {
-      if (!cy.nodes().length) { setStatus("primero sube un CSV"); return; }
+      const data = Graph.graphData();
+      if (!data.nodes.length) { setStatus("primero sube un CSV"); return; }
       setStatus("calculando puentes (betweenness)…");
       try {
-        const data = await fetchJSON("/graph/analysis/top-connectors");
-        const max = Math.max(1e-9, ...data.map((d) => d.score));
-        cy.nodes().data("score", 0);
-        data.forEach((d) => {
-          const n = cy.getElementById(d.person_id);
-          if (n) n.data("score", d.score / max);
+        const scores = await fetchJSON("/graph/analysis/top-connectors");
+        const max = Math.max(1e-9, ...scores.map((d) => d.score));
+        const scoreById = Object.fromEntries(scores.map((d) => [d.person_id, d.score]));
+        data.nodes.forEach((n) => {
+          const s = (scoreById[n.id] || 0) / max;
+          n.val = (n.owner ? 4 : 2) + s * 16;  // los puentes crecen
         });
+        Graph.nodeRelSize(5);  // fuerza refresco del tamaño
 
-        // Lista en el panel con los 5 mayores puentes.
         const items = $("connectorsItems");
         items.innerHTML = "";
-        data.filter((d) => d.score > 0).slice(0, 5).forEach((d, i) => {
+        scores.filter((d) => d.score > 0).slice(0, 5).forEach((d, i) => {
           const li = document.createElement("li");
           const name = (nodesById[d.person_id] || {}).nombre || "—";
           li.innerHTML = `<span class="rank">${i + 1}</span>` +
             `<span class="cname">${name}</span>` +
             `<span class="cscore">${d.score.toFixed(3)}</span>`;
+          li.onclick = () => {
+            const node = data.nodes.find((n) => n.id === d.person_id);
+            if (node) Graph.centerAt(node.x, node.y, 600).zoom(2.4, 600);
+          };
           items.appendChild(li);
         });
         $("connectorsBox").hidden = items.children.length === 0;
@@ -373,8 +429,6 @@
       $("import").disabled = !f;
     };
 
-    // Convierte el `detail` de FastAPI (string o lista de errores de
-    // validación) en un mensaje legible, en vez de "[object Object]".
     function formatDetail(body, status) {
       const d = body && body.detail;
       if (typeof d === "string") return d;
@@ -405,18 +459,13 @@
       $("import").disabled = true;
       setStatus("importando…");
       try {
-        // El nombre identifica de quién es el CSV. Si es el mismo owner que
-        // el último import, reusamos su id (suma contactos al mismo nodo).
-        // Si cambias el nombre, se crea un owner nuevo -> así una segunda
-        // persona sube su propio CSV y sus contactos en común se conectan
-        // con los tuyos (modelo federado).
+        // El nombre identifica de quién es el CSV. Mismo nombre -> mismo
+        // owner. Cambias el nombre -> owner nuevo (modelo federado).
         const savedName = localStorage.getItem(OWNER_NAME_KEY);
         const savedId = localStorage.getItem(OWNER_ID_KEY);
         let ownerId = (savedId && savedName === name) ? savedId : "";
         let { r, body } = await postImport(file, name, ownerId);
 
-        // owner guardado que ya no existe (ej: borraste lingraph.db):
-        // limpiamos y reintentamos creando uno nuevo.
         if (r.status === 404 && ownerId) {
           localStorage.removeItem(OWNER_ID_KEY);
           ({ r, body } = await postImport(file, name, ""));
@@ -442,19 +491,7 @@
     $("import").onclick = importCsv;
     $("reload").onclick = loadGraph;
     $("connectors").onclick = loadTopConnectors;
-    $("fit").onclick = () => cy.fit(undefined, 50);
-
-    cy.on("tap", "node", (e) => {
-      const n = e.target;
-      cy.elements().addClass("dim");
-      const hood = n.closedNeighborhood();
-      hood.removeClass("dim");
-      cy.edges().removeClass("hot");
-      n.connectedEdges().addClass("hot");
-    });
-    cy.on("tap", (e) => {
-      if (e.target === cy) { cy.elements().removeClass("dim"); cy.edges().removeClass("hot"); }
-    });
+    $("fit").onclick = () => Graph.zoomToFit(500, 70);
 
     loadGraph();
   </script>

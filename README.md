@@ -84,16 +84,18 @@ crear uno nuevo. (También puedes importar vía `/docs` → `POST
 
 `/ui` sirve una página estática (`backend/app/static/index.html`) que
 consume `/graph/nodes`, `/graph/edges` y `/graph/analysis/top-connectors`
-y dibuja el grafo con Cytoscape.js:
+y dibuja el grafo con **force-graph** (vasturiano, canvas):
 
 - Diseño oscuro con panel de insights (nodos · aristas · owners) y hero
   de bienvenida cuando el grafo está vacío.
-- Nodos owner (`es_owner`) en verde, contactos en cian.
+- Nodos con glow (owner en verde, contacto en cian) y **partículas
+  animadas** fluyendo por las aristas.
+- **Nombres ocultos por defecto**: aparecen al pasar el mouse sobre un
+  nodo, que además resalta sus conexiones (útil para ver los puentes).
 - Botón "Top conectores" — dimensiona los nodos por betweenness y lista
-  los 5 mayores puentes en el panel.
-- Click en un nodo resalta su vecindario.
+  los 5 mayores puentes en el panel (click en uno centra la vista).
 
-Cytoscape.js va **vendorizado** (`backend/app/static/cytoscape.min.js`),
+force-graph va **vendorizado** (`backend/app/static/force-graph.min.js`),
 así que la app es 100% self-contained: no depende de ningún CDN y funciona
 offline. Es un MVP embebido en el backend — más adelante puede migrar a un
 SPA separado sin cambiar la API.
