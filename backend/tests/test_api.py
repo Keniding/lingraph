@@ -67,6 +67,24 @@ def test_import_csv_creates_nodes_and_edges(client):
     assert len(edges) == 1
 
 
+def test_import_without_owner_creates_one(client):
+    c, _ = client
+    resp = c.post(
+        "/imports/linkedin-csv",
+        params={"owner_name": "Keniding"},
+        files={"file": ("Connections.csv", SAMPLE_CSV, "text/csv")},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["owner_person_id"]  # el id del owner recién creado
+    assert body["personas_creadas"] == 1
+    assert body["aristas_creadas"] == 1
+
+    nodes = c.get("/graph/nodes").json()
+    assert len(nodes) == 2  # owner "Keniding" + Ada
+    assert any(n["nombre"] == "Keniding" and n["es_owner"] for n in nodes)
+
+
 def test_import_unknown_owner_returns_404(client):
     c, _ = client
     resp = c.post(

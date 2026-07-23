@@ -40,20 +40,40 @@ más) de nodos activos (subiste tu propio export).
 
 ## Correr localmente
 
+Instalar y levantar (una vez):
+
 ```bash
 cd backend
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+# Windows PowerShell:
+.venv\Scripts\Activate.ps1
+# Linux/macOS:
+# source .venv/bin/activate
 pip install -r requirements.txt
-
-# Config: copia la plantilla y rellena tus valores (OAuth es opcional
-# para levantar el server; sin él, /auth/linkedin/* responde 503).
-cp .env.example .env
-
 uvicorn app.main:app --reload
 ```
 
-La API queda en http://127.0.0.1:8000, la doc interactiva en `/docs` y el
-**visor del grafo (Cytoscape.js) en `/ui`**.
+Con eso ya funciona todo lo del grafo. El `.env` (credenciales OAuth) es
+**opcional**: solo hace falta si vas a usar el login con LinkedIn.
+
+Tres URLs:
+
+- http://127.0.0.1:8000/ui — **el visor del grafo** (lo que quieres ver).
+- http://127.0.0.1:8000/docs — API interactiva (subir el CSV con botones).
+- http://127.0.0.1:8000/health — chequeo rápido de que está vivo.
+
+## Probarlo en 3 clics (sin OAuth, sin curl)
+
+1. Abre http://127.0.0.1:8000/docs
+2. `POST /imports/linkedin-csv` → **Try it out** → elige tu `Connections.csv`
+   en el campo `file` (deja `owner_person_id` vacío; pon tu nombre en
+   `owner_name`) → **Execute**. Crea tu nodo owner y mergea tus contactos.
+3. Abre http://127.0.0.1:8000/ui → ahí está tu grafo.
+
+> Si cambias el modelo de datos durante el desarrollo (agregar/quitar
+> campos), borra `backend/lingraph.db` y reinicia: SQLite no migra tablas
+> existentes solo, y consultar una columna que falta da error 500.
+> `del backend\lingraph.db` (Windows) · `rm backend/lingraph.db` (Unix).
 
 ## Frontend
 

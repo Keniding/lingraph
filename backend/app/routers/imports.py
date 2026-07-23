@@ -1,3 +1,4 @@
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
@@ -12,22 +13,31 @@ router = APIRouter(prefix="/imports", tags=["imports"])
 
 @router.post("/linkedin-csv")
 async def import_linkedin_csv(
-    owner_person_id: UUID,
     file: UploadFile,
+    owner_person_id: Optional[UUID] = None,
+    owner_name: str = "Yo",
     session: Session = Depends(get_session),
 ):
     """
     Sube el Connections.csv exportado de LinkedIn y lo mergea al grafo.
 
-    owner_person_id: el Person que representa al dueño de esta cuenta
-    (para que las aristas creadas salgan desde su nodo).
+    - owner_person_id: el Person dueño de esta cuenta, para que las aristas
+      salgan de su nodo. Normalmente lo obtienes del login OAuth.
+    - Si no pasas owner_person_id, se crea un owner nuevo con `owner_name`
+      (útil para probar en local sin OAuth). El id creado sale en la
+      respuesta para que lo reutilices en el próximo import.
     """
-    owner = session.get(Person, owner_person_id)
-    if owner is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No existe un Person con id {owner_person_id}.",
-        )
+    if owner_person_id is not None:
+        owner = session.get(Person, owner_person_id)
+        if owner is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No existe un Person con id {owner_person_id}.",
+            )
+    else:
+        owner = Person(nombre=owner_name, es_owner=True, fuentes=["manual"])
+        session.add(owner)
+        session.flush()
 
     raw = await file.read()
     created, matched, edges = 0, 0, 0
@@ -72,6 +82,7 @@ async def import_linkedin_csv(
 
     session.commit()
     return {
+        "owner_person_id": str(owner.id),
         "personas_creadas": created,
         "personas_ya_existentes": matched,
         "aristas_creadas": edges,
