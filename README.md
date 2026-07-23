@@ -52,7 +52,23 @@ cp .env.example .env
 uvicorn app.main:app --reload
 ```
 
-La API queda en http://127.0.0.1:8000 y la doc interactiva en `/docs`.
+La API queda en http://127.0.0.1:8000, la doc interactiva en `/docs` y el
+**visor del grafo (Cytoscape.js) en `/ui`**.
+
+## Frontend
+
+`/ui` sirve una página estática (`backend/app/static/index.html`) que
+consume `/graph/nodes`, `/graph/edges` y `/graph/analysis/top-connectors`
+y dibuja el grafo con Cytoscape.js:
+
+- Nodos owner (`es_owner`) en verde, contactos en azul.
+- Botón "Top conectores" — dimensiona los nodos por betweenness (quiénes
+  hacen de puente entre tus círculos).
+- Click en un nodo resalta su vecindario.
+
+Cytoscape se carga por CDN; para uso offline, descarga el `.js` y sírvelo
+local. Es un MVP embebido en el backend — más adelante puede migrar a un
+SPA separado sin cambiar la API.
 
 ## Config
 
@@ -102,6 +118,6 @@ con SQLite en memoria.
 ## Próximos pasos
 
 - [x] Variables de entorno reales para OAuth de LinkedIn (client_id/secret)
+- [x] Frontend con Cytoscape.js consumiendo `/graph/nodes` y `/graph/edges`
 - [ ] Endpoint de merge cuando dos owners reportan la misma arista
-- [ ] Frontend con Cytoscape.js consumiendo `/graph/nodes` y `/graph/edges`
 - [ ] Cálculo automático de `fuerza` de arista a partir de recencia/frecuencia

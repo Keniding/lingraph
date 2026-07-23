@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>lingraph · grafo</title>
+  <!-- Cytoscape.js por CDN. Si trabajas offline, descarga el archivo y
+       sírvelo local; el resto de la página no depende de nada externo. -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      display: flex; flex-direction: column; height: 100vh;
+      background: #0f1115; color: #e6e6e6;
+    }
+    header {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 10px 14px; background: #161a22; border-bottom: 1px solid #262c38;
+    }
+    header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+    header .spacer { flex: 1; }
+    button {
+      background: #2563eb; color: #fff; border: 0; border-radius: 6px;
+      padding: 7px 12px; cursor: pointer; font-size: 13px;
+    }
+    button.secondary { background: #2b303b; }
+    button:disabled { opacity: .5; cursor: default; }
+    #status { font-size: 12px; color: #9aa4b2; }
+    #cy { flex: 1; width: 100%; }
+    .legend { display: flex; gap: 14px; font-size: 12px; color: #9aa4b2; }
+    .legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>lingraph</h1>
+    <div class="legend">
+      <span><i class="dot" style="background:#22c55e"></i> owner</span>
+      <span><i class="dot" style="background:#60a5fa"></i> contacto</span>
+    </div>
+    <div class="spacer"></div>
+    <button id="reload">Recargar</button>
+    <button id="connectors" class="secondary">Top conectores</button>
+    <button id="fit" class="secondary">Ajustar vista</button>
+    <span id="status"></span>
+  </header>
+  <div id="cy"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const setStatus = (t) => { $("status").textContent = t; };
+
+    const cy = cytoscape({
+      container: $("cy"),
+      wheelSensitivity: 0.2,
+      style: [
+        { selector: "node", style: {
+            "background-color": "#60a5fa",
+            "label": "data(label)",
+            "color": "#e6e6e6",
+            "font-size": 10,
+            "text-valign": "bottom",
+            "text-margin-y": 4,
+            "width": "mapData(score, 0, 1, 18, 60)",
+            "height": "mapData(score, 0, 1, 18, 60)",
+        }},
+        { selector: "node[?owner]", style: { "background-color": "#22c55e" } },
+        { selector: "edge", style: {
+            "width": 1.2,
+            "line-color": "#3a4252",
+            "target-arrow-color": "#3a4252",
+            "target-arrow-shape": "triangle",
+            "arrow-scale": 0.8,
+            "curve-style": "bezier",
+        }},
+        { selector: ".dim", style: { "opacity": 0.15 } },
+      ],
+    });
+
+    async function fetchJSON(url) {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`${url} → ${r.status}`);
+      return r.json();
+    }
+
+    async function loadGraph() {
+      setStatus("cargando…");
+      try {
+        const [nodes, edges] = await Promise.all([
+          fetchJSON("/graph/nodes"),
+          fetchJSON("/graph/edges"),
+        ]);
+        const els = [
+          ...nodes.map((n) => ({ data: {
+            id: n.id,
+            label: n.nombre || "(sin nombre)",
+            owner: !!n.es_owner,
+            score: 0,
+          }})),
+          ...edges.map((e) => ({ data: {
+            id: e.id,
+            source: e.origen_id,
+            target: e.destino_id,
+            tipo: e.tipo,
+          }})),
+        ];
+        cy.elements().remove();
+        cy.add(els);
+        cy.layout({ name: "cose", animate: false, padding: 30 }).run();
+        setStatus(`${nodes.length} nodos · ${edges.length} aristas`);
+      } catch (err) {
+        setStatus("error: " + err.message);
+      }
+    }
+
+    async function loadTopConnectors() {
+      setStatus("calculando betweenness…");
+      try {
+        const data = await fetchJSON("/graph/analysis/top-connectors");
+        const max = Math.max(1e-9, ...data.map((d) => d.score));
+        cy.nodes().data("score", 0);
+        data.forEach((d) => {
+          const n = cy.getElementById(d.person_id);
+          if (n) n.data("score", d.score / max);
+        });
+        setStatus(`top conectores resaltados (${data.length})`);
+      } catch (err) {
+        setStatus("error: " + err.message);
+      }
+    }
+
+    $("reload").onclick = loadGraph;
+    $("connectors").onclick = loadTopConnectors;
+    $("fit").onclick = () => cy.fit(undefined, 40);
+    cy.on("tap", "node", (e) => {
+      const n = e.target;
+      cy.elements().addClass("dim");
+      n.closedNeighborhood().removeClass("dim");
+    });
+    cy.on("tap", (e) => { if (e.target === cy) cy.elements().removeClass("dim"); });
+
+    loadGraph();
+  </script>
+</body>
+</html>
