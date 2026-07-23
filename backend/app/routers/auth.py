@@ -11,9 +11,12 @@ Las credenciales salen de variables de entorno (ver app/config.py y
 devuelven 503 en vez de romper al arrancar.
 """
 from authlib.integrations.starlette_client import OAuth
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlmodel import Session
 
 from app.config import get_settings
+from app.db import get_session
+from app.services.owner_service import upsert_owner_from_userinfo
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -49,8 +52,21 @@ async def linkedin_login(request: Request):
 
 
 @router.get("/linkedin/callback", name="linkedin_callback")
-async def linkedin_callback(request: Request):
+async def linkedin_callback(
+    request: Request, session: Session = Depends(get_session)
+):
     _require_oauth()
     token = await oauth.linkedin.authorize_access_token(request)
     userinfo = token.get("userinfo")  # nombre, email, foto — nada de conexiones
-    return {"userinfo": userinfo}
+    if not userinfo:
+        raise HTTPException(status_code=502, detail="LinkedIn no devolvió userinfo.")
+
+    # Crea/actualiza el nodo owner y devuelve su id: es el owner_person_id
+    # que luego se pasa a POST /imports/linkedin-csv.
+    owner = upsert_owner_from_userinfo(session, dict(userinfo))
+    return {
+        "owner_person_id": str(owner.id),
+        "nombre": owner.nombre,
+        "email": owner.email,
+        "es_owner": owner.es_owner,
+    }

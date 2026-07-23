@@ -44,6 +44,7 @@ class Person(SQLModel, table=True):
     empresa_actual: Optional[str] = None
     cargo: Optional[str] = None
     ubicacion: Optional[str] = None
+    email: Optional[str] = None
     tags: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     fuentes: list[str] = Field(default_factory=list, sa_column=Column(JSON))
 
@@ -56,6 +57,9 @@ class Person(SQLModel, table=True):
     es_owner: bool = False
     owner_user_id: Optional[UUID] = None
     linkedin_profile_url: Optional[str] = Field(default=None, index=True)
+    # `sub` de OpenID Connect: id estable del miembro que autenticó.
+    # Sirve para upsert del owner sin duplicar su nodo en cada login.
+    linkedin_sub: Optional[str] = Field(default=None, index=True)
 
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)

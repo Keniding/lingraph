@@ -65,6 +65,28 @@ Las credenciales y la URL de la base salen de variables de entorno
   https://www.linkedin.com/developers/ (producto "Sign In with LinkedIn
   using OpenID Connect").
 
+## Flujo de dos pasos (identidad + red)
+
+1. **Identidad** — el owner entra por `GET /auth/linkedin/login` (Sign in
+   with LinkedIn / OpenID Connect). El callback crea/actualiza su nodo
+   `Person` con `es_owner=True` y devuelve su `owner_person_id`. Es
+   idempotente por el `sub` de OIDC: iniciar sesión varias veces no
+   duplica el nodo.
+2. **Red** — con ese `owner_person_id`, el owner sube su `Connections.csv`
+   a `POST /imports/linkedin-csv`. Las aristas creadas salen de su nodo.
+
+LinkedIn nunca expone las conexiones por API, así que el paso 2 siempre es
+upload manual — el OAuth del paso 1 es solo verificación de identidad.
+
+### Configurar la app de LinkedIn
+
+En https://www.linkedin.com/developers/ → Create app, y luego:
+
+- Producto: **"Sign In with LinkedIn using OpenID Connect"** (self-serve).
+- Tab Auth → Authorized redirect URL:
+  `http://127.0.0.1:8000/auth/linkedin/callback`.
+- Copia `Client ID` / `Client Secret` al `.env`.
+
 ## Tests
 
 ```bash
