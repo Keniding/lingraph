@@ -191,12 +191,18 @@
       const file = $("fileInput").files[0];
       if (!file) { setStatus("elige un archivo CSV primero"); return; }
       const name = $("ownerName").value.trim() || "Yo";
-      localStorage.setItem(OWNER_NAME_KEY, name);
 
       $("import").disabled = true;
       setStatus("importando…");
       try {
-        let ownerId = localStorage.getItem(OWNER_ID_KEY) || "";
+        // El nombre identifica de quién es el CSV. Si es el mismo owner que
+        // el último import, reusamos su id (suma contactos al mismo nodo).
+        // Si cambias el nombre, se crea un owner nuevo -> así una segunda
+        // persona sube su propio CSV y sus contactos en común se conectan
+        // con los tuyos (modelo federado).
+        const savedName = localStorage.getItem(OWNER_NAME_KEY);
+        const savedId = localStorage.getItem(OWNER_ID_KEY);
+        let ownerId = (savedId && savedName === name) ? savedId : "";
         let { r, body } = await postImport(file, name, ownerId);
 
         // owner guardado que ya no existe (ej: borraste lingraph.db):
@@ -209,6 +215,7 @@
         if (!r.ok) throw new Error(formatDetail(body, r.status));
 
         localStorage.setItem(OWNER_ID_KEY, body.owner_person_id);
+        localStorage.setItem(OWNER_NAME_KEY, name);
         setStatus(
           `importado: +${body.personas_creadas} nuevos, ` +
           `${body.personas_ya_existentes} ya existían, ` +
